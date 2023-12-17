@@ -19,23 +19,33 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 SPDX-License-Identifier: MIT
 *************************************************************************************************/
 
-/** @file main.c
- ** @brief Definición de la función principal del programa
+/** @file
+ ** @brief Capa de abstracción para gestion de puertos digitales
  **/
 
 /* === Headers files inclusions =============================================================== */
 
-#include "main.h"
 #include "gpio.h"
+#include <stddef.h>
 
 /* === Macros definitions ====================================================================== */
 
-#define GPIO_A 1
-#define GPIO_B 2
-#define PIN_3  3
-#define PIN_5  5
+#ifndef MAX_GPIO_INSTANCES
+#define MAX_GPIO_INSTANCES 16
+#endif
 
 /* === Private data type declarations ========================================================== */
+
+//! Estructura con los atributos de un puerto
+struct gpio_h {
+    uint8_t port; //!< Numero de puerto GPIO
+    uint8_t pin;  //!< Pin del puerto GPIO
+    bool state;   //!< Estado actual del puerto digital
+    bool output;  //!< El puerto esta configurado como salida
+#ifdef USE_STATIC_MEM
+    bool used; //!< El descriptor del puerto esta ocupado
+#endif
+};
 
 /* === Private variable declarations =========================================================== */
 
@@ -45,28 +55,65 @@ SPDX-License-Identifier: MIT
 
 /* === Private variable definitions ============================================================ */
 
+static gpio_t GpioAllocate(void);
+
 /* === Private function implementation ========================================================= */
 
-void Delay(void) {
+#ifdef USE_STATIC_MEM
+/**
+ * @brief Función para crear un puerto digital a través de memoria estatica
+ *
+ * @return gpio_t Puntero al objeto creado
+ */
+static gpio_t GpioAllocate(void) {
+    static struct gpio_h instances[MAX_GPIO_INSTANCES] = {0};
+
+    gpio_t self = NULL;
+    for (int index = 0; index < MAX_GPIO_INSTANCES; index++) {
+        if (!instances[index].used) {
+            self = &instances[index];
+            self->used = true;
+            break;
+        }
+    }
+    return self;
 }
+#endif
+
 /* === Public function implementation ========================================================== */
 
-int main(void) {
-    gpio_t led_rojo;
-    gpio_t led_verde;
-
-    led_rojo = GpioCreate(GPIO_A, PIN_3);
-    led_verde = GpioCreate(GPIO_B, PIN_5);
-
-    GpioSetDirection(led_rojo, true);
-    GpioSetState(led_rojo, true);
-    while (1) {
-        GpioSetState(led_rojo, false);
-        Delay();
-        GpioSetState(led_rojo, true);
+gpio_t GpioCreate(uint8_t port, uint8_t bit) {
+    gpio_t self;
+#ifdef USE_STATIC_MEM
+    self = GpioAllocate();
+#else
+    self = malloc(sizeof(struct gpio_h));
+#endif
+    if (self) {
+        self->port = port;
+        self->pin = bit;
+        self->output = false;
+        self->state = false;
     }
+    return self;
+}
 
-    return 0;
+void GpioSetDirection(gpio_t self, bool output) {
+    self->output = output;
+}
+
+bool GpioGetDirection(gpio_t self) {
+    return self->output;
+}
+
+void GpioSetState(gpio_t self, bool state) {
+    if (self->output) {
+        self->state = state;
+    }
+}
+
+bool GpioGetState(gpio_t self) {
+    return self->state;
 }
 
 /* === End of documentation ==================================================================== */
